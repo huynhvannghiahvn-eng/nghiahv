@@ -78,9 +78,20 @@
       chat.scrollTop = chat.scrollHeight;
     }
 
-    function fixedBotReply(userText) {
-      // Fixed response for now
-      return "I'm a simple demo bot. You said: " + userText;
+    async function callBackend(userText) {
+      const payload = { message: userText };
+      const res = await fetch('http://127.0.0.1:5000/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(`HTTP ${res.status}: ${msg}`);
+      }
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data.reply || 'No reply';
     }
 
     let typingEl = null;
@@ -106,12 +117,19 @@
       input.style.height = '48px';
       sendBtn.disabled = true;
       showTyping();
-      setTimeout(() => {
-        hideTyping();
-        appendMessage('bot', fixedBotReply(text));
-        sendBtn.disabled = false;
-        input.focus();
-      }, 400);
+      callBackend(text)
+        .then((reply) => {
+          hideTyping();
+          appendMessage('bot', reply);
+        })
+        .catch((err) => {
+          hideTyping();
+          appendMessage('bot', `Error: ${err.message}`);
+        })
+        .finally(() => {
+          sendBtn.disabled = false;
+          input.focus();
+        });
     }
 
     sendBtn.addEventListener('click', send);
