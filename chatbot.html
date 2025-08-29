@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simple Web Chatbot</title>
+  <style>
+    :root { --bg:#0b1020; --panel:#0d1326; --surface:#0f162e; --glass:#0b1220aa; --text:#e6e8ee; --muted:#a0a8c0; --accent:#22c55e; --accent2:#60a5fa; --border:#1e2a44; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: radial-gradient(1200px 600px at 20% -10%, #12204488, transparent), radial-gradient(1000px 500px at 110% 10%, #164e2a55, transparent), var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    .container { max-width: 920px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; padding: 16px; }
+    header { padding: 12px 0 14px; display:flex; align-items:center; justify-content:space-between; }
+    header h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.2px; background: linear-gradient(90deg, #e6e8ee, #93c5fd, #86efac); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .toolbar { display:flex; gap: 8px; color: var(--muted); font-size: 12px; }
+    .chip { background: #0b1220; border: 1px solid var(--border); padding: 6px 10px; border-radius: 999px; }
+    .chat { flex: 1; background: linear-gradient(180deg, var(--surface), var(--panel)); border-radius: 16px; padding: 16px; overflow-y: auto; border: 1px solid var(--border); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02), 0 10px 30px rgba(0,0,0,0.25); }
+    .msg { display: flex; gap: 12px; margin: 12px 0; align-items: flex-start; }
+    .avatar { width: 32px; height: 32px; border-radius: 10px; display: inline-grid; place-items: center; font-size: 14px; font-weight: 800; background: #0b1220; border: 1px solid var(--border); box-shadow: 0 2px 6px rgba(0,0,0,0.25) inset; }
+    .user .avatar { background: linear-gradient(135deg, #0b1220, #0d1b3a); border-color: #1f2c58; color: #93c5fd; }
+    .bot .avatar { background: linear-gradient(135deg, #0b1220, #08301e); border-color: #185a38; color: #86efac; }
+    .bubble { background: #0b1220; border: 1px solid var(--border); padding: 12px 14px; border-radius: 14px; max-width: 75%; line-height: 1.5; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+    .user .bubble { background: linear-gradient(180deg, #0e182e, #0a1934); border-color: #22325e; }
+    .bot .bubble { background: linear-gradient(180deg, #0b1628, #0a1f2c); border-color: #1b3540; }
+    .typing { display:inline-flex; gap: 6px; padding: 2px 6px; }
+    .typing .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); opacity: .6; animation: blink 1.4s infinite; }
+    .typing .dot:nth-child(2){ animation-delay: .2s; }
+    .typing .dot:nth-child(3){ animation-delay: .4s; }
+    @keyframes blink { 0%,80%,100%{ opacity:.2 } 40%{ opacity:1 } }
+    .inputbar { display: flex; gap: 10px; margin-top: 12px; background: #0b1220; border: 1px solid var(--border); border-radius: 14px; padding: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+    .inputbar textarea { flex: 1; background: transparent; border: none; resize: none; outline: none; color: var(--text); padding: 10px 12px; height: 48px; max-height: 160px; }
+    .actions { display:flex; gap:8px; align-items:center; }
+    .inputbar button { background: linear-gradient(90deg, var(--accent2), var(--accent)); color: #071017; border: none; border-radius: 12px; padding: 0 16px; font-weight: 700; cursor: pointer; height: 40px; box-shadow: 0 6px 16px rgba(34,197,94,0.25); }
+    .inputbar button:disabled { opacity: .6; cursor: not-allowed; }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Simple Web Chatbot</h1>
+      <div class="toolbar">
+        <span class="chip">Demo</span>
+        <span class="chip">Local Only</span>
+      </div>
+    </header>
+
+    <div id="chat" class="chat" aria-live="polite" aria-label="Chat transcript"></div>
+
+    <div class="inputbar">
+      <textarea id="input" placeholder="Say something... (Enter to send, Shift+Enter for newline)" autofocus></textarea>
+      <div class="actions">
+        <button id="send">Send</button>
+      </div>
+    </div>
+    <div class="hint">Enter to send • Shift+Enter for newline</div>
+  </div>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+
+    function appendMessage(role, text) {
+      const wrapper = document.createElement('div');
+      wrapper.className = `msg ${role}`;
+
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar';
+      avatar.textContent = role === 'user' ? 'U' : 'B';
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = text;
+
+      wrapper.appendChild(avatar);
+      wrapper.appendChild(bubble);
+      chat.appendChild(wrapper);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function fixedBotReply(userText) {
+      // Fixed response for now
+      return "I'm a simple demo bot. You said: " + userText;
+    }
+
+    let typingEl = null;
+    function showTyping() {
+      if (typingEl) return; // already visible
+      typingEl = document.createElement('div');
+      typingEl.className = 'msg bot';
+      typingEl.innerHTML = `
+        <div class="avatar">B</div>
+        <div class="bubble">
+          <span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
+        </div>`;
+      chat.appendChild(typingEl);
+      chat.scrollTop = chat.scrollHeight;
+    }
+    function hideTyping() { if (!typingEl) return; typingEl.remove(); typingEl = null; }
+
+    function send() {
+      const text = input.value.trim();
+      if (!text) return;
+      appendMessage('user', text);
+      input.value = '';
+      input.style.height = '48px';
+      sendBtn.disabled = true;
+      showTyping();
+      setTimeout(() => {
+        hideTyping();
+        appendMessage('bot', fixedBotReply(text));
+        sendBtn.disabled = false;
+        input.focus();
+      }, 400);
+    }
+
+    sendBtn.addEventListener('click', send);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        send();
+      }
+    });
+
+    // Auto-grow textarea
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+    });
+
+    // Greet message
+    appendMessage('bot', 'Hello! I\'m your demo chatbot.');
+  </script>
+  </body>
+  </html>
+
+
